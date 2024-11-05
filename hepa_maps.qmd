@@ -1,0 +1,345 @@
+---
+title: "HEPA maps"
+format: 
+  html: default
+  pdf: default
+editor: visual
+execute:
+  echo: false
+  warning: false
+---
+
+## Libraries
+
+```{r}
+library(bcmaps)
+library(sf)
+library(tidyr)
+library(dplyr)
+library(lubridate)
+```
+
+## Playing around
+
+```{r}
+bc_hsda <- health_hsda()
+plot(st_geometry(bc_hsda))
+
+write.csv(bc_hsda, "bc_hsda.csv")
+glimpse(bc_hsda)
+
+raqdpsfw_sf <- read_csv("./raqdpsfw_UBC/all_raqdpsfw_UBC.csv", show_col_types = FALSE) %>%
+  mutate(date=ym(date)) %>%
+  st_as_sf(coords = c("longitudes", "latitudes"), crs=4326) 
+
+plot(st_geomoetry(raqdpsfw_sf))
+
+raqdpsfw_sf %>% glimpse()
+
+
+projections <- read.csv("./monthly_ECCC_projection_2019_2036.csv")
+
+glimpse(projections)
+
+projections <- projections %>%
+  mutate(date = ym(date)) %>%
+  st_as_sf(coords = c("longitudes", "latitudes"), crs = 4326)
+
+cd_shapefile <- st_read("./shape/lcd_000a21a_e.shp")
+glimpse(cd_shapefile)
+
+# converting sptial datasets
+
+cd_shapefile_BC <- st_transform(cd_shapefile, crs = 3005)
+
+st_crs(cd_shapefile)
+st_crs(cd_shapefile_BC)
+st_crs(bc_hsda)
+
+
+cd_hsda_mapping <- st_join(cd_shapefile_BC, bc_hsda, join = st_intersects)
+
+glimpse(cd_hsda_mapping)
+
+glimpse(projections)
+
+projections_HSDA <- projections %>%
+  mutate(CDUID = as.character(CDUID)) %>%
+  left_join(cd_hsda_mapping, by = "CDUID") %>%
+  select(HLTH_SERVICE_DLVR_AREA_NAME, month, year, date, background_pm25)
+
+
+```
+
+```{r}
+map_raqdps_to_bcHSDA <- function(df, outputName, imputeInternalMissing=FALSE) {
+  
+  # reads shape file (geographical boundery data)
+  hsda <- health_hsda()
+  hsda_row <- hsda %>%     
+  st_drop_geometry() %>% # drops geometry
+  mutate(in_hsda=1:16) %>% # add sequential identifies (in_CDS)
+  select(HLTH_SERVICE_DLVR_AREA_CODE, HLTH_SERVICE_DLVR_AREA_NAME, HLTH_SERVICE_DLVR_AREA_ID) # select columns
+
+  df <- df %>% st_transform(crs=st_crs(hsda)) # transforms input (coordinate referece system CRS) to match cds in shape file.
+
+  # spatial interestions and data manipulation
+  df <- df %>% 
+  mutate(in_hsda=as.numeric(st_intersects(df, hsda, sparse=TRUE))) %>%
+  st_drop_geometry() %>%
+  drop_na() %>%
+  left_join(hsda_row) %>%
+  select(-in_hsda) %>% 
+  group_by(HLTH_SERVICE_DLVR_AREA_CODE, date) %>%
+  summarise(!!sym(outputName) := mean(values)) %>%
+  ungroup() %>% 
+  mutate(month=month(date), year=year(date)) %>%
+  complete(HLTH_SERVICE_DLVR_AREA_CODE, month, year) %>%
+  mutate(date=ym(paste0(year, "-",month))) %>%
+  arrange(HLTH_SERVICE_DLVR_AREA_CODE, month, year)
+  
+  if (imputeInternalMissing){
+    df <- df %>%
+      mutate(!!sym(outputName)  := na.approx(!!sym(outputName), na.rm = FALSE)) %>% 
+      arrange(HLTH_SERVICE_DLVR_AREA_CODE, date) %>%
+      select(HLTH_SERVICE_DLVR_AREA_CODE, date, sym(outputName))
+  }
+ return(df)
+  
+}
+```
+
+## Running code on raqdps
+
+```{r}
+raqdps_sf <- read.csv("./raqdps_UBC/all_raqdps_UBC.csv") 
+glimpse(raqdps_sf)
+
+raqdps_sf <- raqdps_sf %>%
+  mutate(date=ym(date)) %>%
+  st_as_sf(coords = c("longitudes", "latitudes"), crs=4326) 
+
+# raqds_hsda <- map_raqdps_to_bcHSDA(raqdps_sf, outputName="baseline_HSDA_pm2_5")
+
+
+hsda <- health_hsda()
+glimpse(hsda)
+
+hsda_row <- hsda %>%     
+  st_drop_geometry() %>% # drops geometry
+  mutate(in_hsda=1:16) %>% # add sequential identifies (in_CDS)
+  select(HLTH_SERVICE_DLVR_AREA_CODE, HLTH_SERVICE_DLVR_AREA_NAME, in_hsda)
+
+glimpse(hsda_row)
+  
+  # reads shape file (geographical boundery data)
+  # select columns
+
+
+
+
+
+raqdps_sf_1 <- raqdps_sf %>% 
+  st_transform(crs=st_crs(hsda)) # transforms input (coordinate referece system CRS) to match cds in shape file.
+
+glimpse(raqdps_sf_1)
+
+# spatial interestions and data manipulation
+raqdps_sf_2 <- raqdps_sf_1 %>% 
+  mutate(in_hsda=as.numeric(st_intersects(raqdps_sf_1, hsda, sparse=TRUE)))
+
+glimpse(raqdps_sf_2)
+
+raqdps_sf_3 <- raqdps_sf_2 %>%
+  st_drop_geometry() %>%
+  drop_na() %>%
+  left_join(hsda_row) 
+
+glimpse(raqdps_sf_3)
+
+OutputName <- "average_value"
+
+raqdps_sf_4 <- raqdps_sf_3 %>%
+  select(-in_hsda) %>% 
+  group_by(HLTH_SERVICE_DLVR_AREA_NAME, date) %>%
+  summarise(!!sym(OutputName) := mean(values)) %>%
+  ungroup() %>% 
+  mutate(month=month(date), year=year(date)) %>%
+  complete(HLTH_SERVICE_DLVR_AREA_NAME, month, year) %>%
+  mutate(date=ym(paste0(year, "-",month))) %>%
+  arrange(HLTH_SERVICE_DLVR_AREA_NAME, month, year)
+
+glimpse(raqdps_sf_4)
+
+countNA <- sum(as.numeric(map(raqdps_sf_4, ~sum(is.na(.)))))
+if (countNA>0) {stop("NAs found in data")}
+
+
+
+  if (){
+    df <- df %>%
+      mutate(!!sym(outputName)  := na.approx(!!sym(outputName), na.rm = FALSE)) %>% 
+      arrange(HLTH_SERVICE_DLVR_AREA_CODE, date) %>%
+      select(HLTH_SERVICE_DLVR_AREA_CODE, date, sym(outputName))
+  }
+ return(df)
+  
+}
+
+
+```
+
+```{r}
+ha_line <-
+ggplot(raqdps_sf_3) + 
+geom_line(aes(x=date, y=values, colour=HLTH_SERVICE_DLVR_AREA_NAME), linewidth=0.5) +
+scale_x_date(date_labels = "%m-%Y", 
+             date_breaks = "9 month") +
+  theme_few(base_size = 8) +
+  theme(axis.text.x=element_text(angle=90,hjust=1), 
+        legend.position="none") +
+  facet_wrap(~HLTH_SERVICE_DLVR_AREA_NAME) +
+#  ggtitle("Smoke Exposure Levels (PM2.5) across BC") + 
+  xlab("") + ylab("µg/m³")
+
+ha_line
+
+
+ha_line_2 <-
+ggplot(raqdps_sf_4) + 
+geom_line(aes(x=date, y=average_value, colour=HLTH_SERVICE_DLVR_AREA_NAME), linewidth=0.5) +
+scale_x_date(date_labels = "%m-%Y", 
+             date_breaks = "9 month") +
+  theme_few(base_size = 8) +
+  theme(axis.text.x=element_text(angle=90,hjust=1), 
+        legend.position="none") +
+  facet_wrap(~HLTH_SERVICE_DLVR_AREA_NAME) +
+#  ggtitle("Smoke Exposure Levels (PM2.5) across BC") + 
+  xlab("") + ylab("µg/m³")
+
+ha_line_2
+
+```
+
+```{r}
+
+raqdps_sf <- read_csv("./raqdps_UBC/all_raqdps_UBC.csv", show_col_types = FALSE) %>%
+  mutate(date=ym(date)) %>%
+  st_as_sf(coords = c("longitudes", "latitudes"), crs=4326) 
+
+# raqds_hsda <- map_raqdps_to_bcHSDA(raqdps_sf, outputName="baseline_HSDA_pm2_5")
+
+
+map_raqdps_to_bcHSDA <- function(df, outputName, imputeInternalMissing=FALSE) {
+  
+  hsda <- health_hsda()
+ 
+  hsda_row <- hsda %>%     
+    st_drop_geometry() %>% # drops geometry
+    mutate(in_hsda=1:16) %>% # add sequential identifies (in_CDS)
+    select(HLTH_SERVICE_DLVR_AREA_CODE, HLTH_SERVICE_DLVR_AREA_NAME, in_hsda)
+
+
+  # reads shape file (geographical boundery data)
+  # select columns
+
+  df <- df %>% 
+  st_transform(crs=st_crs(hsda)) # transforms input (coordinate referece system CRS) to match cds in shape file.
+# spatial interestions and data manipulation
+  df <- df %>% 
+  mutate(in_hsda=as.numeric(st_intersects(df, hsda, sparse=TRUE))) %>%
+  st_drop_geometry() %>%
+  drop_na() %>%
+  left_join(hsda_row) %>%
+  select(-in_hsda) %>% 
+  group_by(HLTH_SERVICE_DLVR_AREA_CODE, date) %>%
+  summarise(!!sym(outputName) := mean(values)) %>%
+  ungroup() %>% 
+  mutate(month=month(date), year=year(date)) %>%
+  complete(HLTH_SERVICE_DLVR_AREA_CODE, month, year) %>%
+  mutate(date=ym(paste0(year, "-",month))) %>%
+  arrange(HLTH_SERVICE_DLVR_AREA_CODE, month, year) 
+  
+
+  if (imputeInternalMissing){
+    df <- df %>%
+      mutate(!!sym(outputName)  := na.approx(!!sym(outputName), na.rm = FALSE)) %>% 
+      arrange(HLTH_SERVICE_DLVR_AREA_CODE, date) %>%
+      select(HLTH_SERVICE_DLVR_AREA_CODE, date, sym(outputName))
+  }
+ return(df)
+  
+}
+
+
+raqdps_hsda <- map_raqdps_to_bcHSDA(raqdps_sf, "test.csv")
+
+glimpse(raqdps_hsda)
+
+write.csv(raqdps_hsda, "raqdps_hsda_TEST.csv")
+```
+
+```{r}
+library(naniar)
+vis_miss(raqdps_hsda, sort_miss = T)
+
+datapoints_per_month <- raqdps_hsda %>%
+  group_by(month) %>%
+  summarise(count=n())
+
+
+raqdps_hsda %>% 
+  summarise(mean=mean(test.csv), sd = sd(test.csv), 
+            largest=min(test.csv)) %>%
+  gt() %>%
+  fmt_number(columns =c("mean", "sd", "largest"))
+
+
+
+datapoints_per_month <- raqdps_hsda %>%
+  group_by(month) %>%
+  summarise(count=n())
+
+
+
+pm25 <- raqdps_hsda %>% 
+  group_by(month) %>%
+  summarise(proportion=n()/1758, mean=mean(test.csv), sd = sd(test.csv), 
+            largest=min(test.csv)) %>%
+  gt() %>%
+  fmt_number(columns =c("mean", "sd", "largest")) %>%
+  fmt_percent("proportion") %>%
+  tab_header(
+    title = "Size and Seasonal Distribution of Negative Wildfire-Related PM2.5")
+
+
+hsda <- st_read(health_hsda())
+  
+glimpse(raqdps_hsda)
+
+average_monthly_pm <- raqdps_hsda %>%
+  mutate(month=month(date),
+         HLTH_SERVICE_DLVR_AREA_CODE=as.character(HLTH_SERVICE_DLVR_AREA_CODE)) %>%
+  group_by(HLTH_SERVICE_DLVR_AREA_CODE, month) %>%
+  summarise(pm25 = mean(test.csv)) %>%
+  ungroup()
+
+average_monthly_pm %>%
+  group_by(HLTH_SERVICE_DLVR_AREA_CODE) %>%
+  count() %>%
+  filter(n!=12)
+
+average_monthly_pm %>%
+  ggplot() +
+  geom_point(aes(y=pm25, x=month)) + 
+  theme_classic()
+
+
+map_average <-  %>%
+    st_as_sf()
+   
+ggplot(map_average) + 
+    geom_sf(aes(fill=wildfire_pm25), size=0.01, alpha=0.9) +
+    facet_wrap(~month)
+              
+```
