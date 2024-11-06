@@ -68,6 +68,7 @@ projections_HSDA <- projections %>%
   left_join(cd_hsda_mapping, by = "CDUID") %>%
   select(HLTH_SERVICE_DLVR_AREA_NAME, month, year, date, background_pm25)
 
+glimpse(health_hsda)
 
 ```
 

@@ -24,12 +24,23 @@ pm_future0 <- read.csv("./data/future_pm25_0_2023_2036.csv")
 pm_future25 <- read.csv("./data/future_pm25_25_2023_2036.csv")
 pm_future50 <- read.csv("./data/future_pm25_50_2023_2036.csv")
 
+pm_future0a <- readRDS("./data/future_pm25_5yr_0_2023_2036.rds")
+pm_future25a <- readRDS("./data/future_pm25_5yr_25_2023_2036.rds")
+pm_future50a <- readRDS("./data/future_pm25_5yr_50_2023_2036.rds")
+
 raqdps <- read.csv("./data/projections/raqdps_mo_hsda_2012_2023.csv")
 raqdpsfw <- read.csv("./data/projections/raqdpsfw_mo_hsda_2012_2023.csv")
 gemmach <- read.csv("./data/projections/gemmach_2019_2036.csv")
 
+raqdps_raqdpsfw_combined <- readRDS("./data/backups/average_monthly_wildfire_smoke_HSDA_2018_2023.rds")
+raqdps_raqdpsfw_combineda <- readRDS("./data/backups/average_5yr_monthly_wildfire_smoke_HSDA_2018_2023.rds")
+
+
 glimpse(raqdps)
-glipose(raqdpsfw)
+glimpse(raqdpsfw)
+
+glimpse(raqdps_raqdpsfw_combined)
+glimpse(pm_future0a)
 ```
 # Cleaning air pollution data.
 ```{r}
@@ -69,10 +80,61 @@ pm_f50 <- pm_future50 %>%
   ) %>%
     select(HLTH_SERVICE_DLVR_AREA_NAME, year, month, date, pm25, background_pm25, wildfire_pm25)
 
+# Using 5-year averages
+
+pm_f0a <- pm_future0a %>%
+   mutate(
+    date = as.Date(date, format = "%Y-%m-%d"),  # Convert date column to Date format
+    pm25 = total_pm25  # Rename monthly_smoke to pm
+  ) %>%
+    select(HLTH_SERVICE_DLVR_AREA_NAME, year, month, date, pm25, background_pm25, wildfire_pm25)
+
+
+pm_f25a <- pm_future25a %>%
+   mutate(
+    date = as.Date(date, format = "%Y-%m-%d"),  # Convert date column to Date format
+    pm25 = total_pm25  # Rename monthly_smoke to pm
+  ) %>%
+    select(HLTH_SERVICE_DLVR_AREA_NAME, year, month, date, pm25, background_pm25, wildfire_pm25)
+
+pm_f50a <- pm_future50a %>%
+     mutate(
+    date = as.Date(date, format = "%Y-%m-%d"),  # Convert date column to Date format
+    pm25 = total_pm25  # Rename monthly_smoke to pm
+  ) %>%
+    select(HLTH_SERVICE_DLVR_AREA_NAME, year, month, date, pm25, background_pm25, wildfire_pm25)
+
+glimpse(raqdps_raqdpsfw_combined)
+pm_raqdpsfw_raqdps <- raqdps_raqdpsfw_combined %>%
+     mutate(
+    year = year(date),
+    month = month(date),
+    date = as.Date(date, format = "%Y-%m-%d"),  # Convert date column to Date format
+    pm25 = wildfire_pm25  # Rename monthly_smoke to pm
+  ) %>%
+    select(HLTH_SERVICE_DLVR_AREA_NAME, year, month, date, pm25, average_mo_raqdpsfw, average_mo_raqdps)
+
+pm_raqdpsfw_raqdpsa <- raqdps_raqdpsfw_combineda %>%
+     mutate(
+    year = year(date),
+    month = month(date),
+    date = as.Date(date, format = "%Y-%m-%d"),  # Convert date column to Date format
+    pm25 = wildfire_pm25  # Rename monthly_smoke to pm
+  ) %>%
+    select(HLTH_SERVICE_DLVR_AREA_NAME, year, month, date, pm25, average_mo_raqdpsfw, average_mo_raqdps)
+glimpse(pm_raqdpsfw_raqdpsa)
+
+saveRDS(pm_raqdpsfw_raqdps, "pm25_historical_raqdps_raqdpsfw_2018_2022_cleaned.rds")
+saveRDS(pm_raqdpsfw_raqdpsa, "pm25_historical_raqdps_raqdpsfw_5yr_avg_2018_2022_cleaned.rds")
+
 write.csv(pm_h, "pm25_historical_canossem_2012_2022_cleaned.csv")
 write.csv(pm_f0, "pm25_future_0_2023_2036_cleaned.csv")
 write.csv(pm_f25, "pm25_future_25_2023_2036_cleaned.csv")
 write.csv(pm_f50, "pm25_future_50_2023_2036_cleaned.csv")
+
+saveRDS(pm_f0a, "pm25_future_0_5yr_2023_2036_cleaned.rds")
+saveRDS(pm_f25a, "pm25_future_25_5yr_2023_2036_cleaned.rds")
+saveRDS(pm_f50a, "pm25_future_50_5yr_2023_2036_cleaned.rds")
 
 glimpse(pm_h)
 glimpse(pm_f0)
@@ -84,8 +146,15 @@ pm_f0 <- pm_f0 %>% mutate(scenario = "projection_0")
 pm_f25 <- pm_f25 %>% mutate(scenario = "projection_25")
 pm_f50 <- pm_f50 %>% mutate(scenario = "projection_50")
 
-pm_combined <- bind_rows(pm_h, pm_f0, pm_f25, pm_f50)
-glimpse(pm_combined)
+pm_h <- pm_h %>% mutate(scenario = "historical")
+pm_f0a <- pm_f0a %>% mutate(scenario = "projection_0")
+pm_f25a <- pm_f25a %>% mutate(scenario = "projection_25")
+pm_f50a <- pm_f50a %>% mutate(scenario = "projection_50")
+pm_rr <- pm_raqdpsfw_raqdps %>% mutate(scenario = "raqdpsfw")
+
+
+pm_combineda <- bind_rows(pm_h, pm_f0a, pm_f25a, pm_f50a, pm_rr)
+glimpse(pm_combineda)
 ```
 
 # Plotting combined data
@@ -110,6 +179,9 @@ haLineMo_A <- function(data, y, title){
     labs(title = title, x = "", y = "µg/m³")
 }
 
+plot_raqdpsfw_5yr_avg <- haLineMo_A(pm_rr, pm25, "Wildfire PM2.5, RAQDPS-FW - RAQDPS (2018-2022)")
+ggsave("wildfire_pm25_raqdpsfw_raqdps_5yr_avg_2018_2022.png", plot_raqdpsfw_5yr_avg, width = 8, height = 6)
+
 haLineMo_B <- function(data, y, title){
   ggplot(data) +
     geom_line(aes(x = date, y = !!enquo(y)), linewidth = 0.5) +
@@ -130,17 +202,30 @@ haLineMo_B <- function(data, y, title){
     labs(title = title, x = "", y = "µg/m³")
     }
     
-haLineMo_A(pm_h, pm25, "CanOSSEM PM2.5, 2012-2022")
-haLineMo_B(pm_f0, pm25, "GEM-MACH projections PM2.5, 2023-2036")
+plot_pm25_h <- haLineMo_A(pm_h, pm25, "CanOSSEM PM2.5, 2012-2022")
+ggsave(filename = "plot_pm25_CanOSSEM.png", plot = plot_pm25_h, width = 8, height = 6)
 
 
+haLineMo_B(pm_f0, pm25, "GEM-MACH projections PM2.5, 2023-2036, 0% increase in wildfires from 2023-2100")
+haLineMo_B(pm_f25, pm25, "GEM-MACH projections PM2.5, 2023-2036, 25% increase in wildfires from 2023-2100")
+haLineMo_B(pm_f50, pm25, "GEM-MACH projections PM2.5, 2023-2036, 50% increase in wildfires from 2023-2100")
 
-haLineMo_project <- ggplot(pm_combined) +
-    geom_line(aes(x = date, y = pm25, colour = scenario), linewidth = 0.5) +
-    scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2036-01-01"), by = "5 years"),
+plot_pmf0a <- haLineMo_B(pm_f0a, pm25, "GEM-MACH projections PM2.5, 5-yr historical average, 2023-2036, 0% increase in wildfires from 2023-2100")
+plot_pmf25a <- haLineMo_B(pm_f25a, pm25, "GEM-MACH projections PM2.5, 5-yr historical average, 2023-2036, 25% increase in wildfires from 2023-2100")
+plot_pmf50a <- haLineMo_B(pm_f50a, pm25, "GEM-MACH projections PM2.5, 5-yr historical average, 2023-2036, 50% increase in wildfires from 2023-2100")
+
+ggsave("line_pm25_5yr_0.png", plot = plot_pmf0a, width = 8, height = 6)
+ggsave("line_pm25_5yr_25.png", plot = plot_pmf25a, width = 8, height = 6)
+ggsave("line_pm25_5yr_50.png", plot = plot_pmf50a, width = 8, height = 6)
+
+glimpse(pm_combined)
+
+haLineMo_project1 <- ggplot(pm_combined) +
+    geom_line(aes(x = date, y = pm25, colour = scenario), linewidth = 0.25, alpha = 0.7, position = position_jitter(width = 0.25)) +
+    scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2037-01-01"), by = "5 years"),
                  date_minor_breaks = "1 year",
                  date_labels = "%Y") +
-    coord_cartesian(ylim = c(0, 100)) +
+    coord_cartesian(ylim = c(0, 120)) +
     theme_few(base_size = 8) +
     theme(
       axis.text.x = element_text(angle = 90, hjust = 1),
@@ -152,9 +237,90 @@ haLineMo_project <- ggplot(pm_combined) +
     ) +
     facet_wrap(~ HLTH_SERVICE_DLVR_AREA_NAME) +
     labs(title = "Historical and Projected PM2.5 Levels", x = "", y = "µg/m³")
-haLineMo_project
-```
 
+haLineMo_project1
+
+haLineMo_project2 <- ggplot(pm_combineda) +
+    geom_line(aes(x = date, y = pm25, colour = scenario), linewidth = 0.25, alpha = 0.7, position = position_jitter(width = 0.25)) +
+    scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2037-01-01"), by = "5 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+    coord_cartesian(ylim = c(0, 120)) +
+    theme_few(base_size = 8) +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      legend.position = "right",
+      panel.grid.minor = element_blank(),      # Remove minor grid lines
+      panel.grid.major = element_blank(),      # Remove major grid lines
+      axis.ticks = element_line(color = "black"),
+      axis.ticks.length = unit(0.15, "cm")
+    ) +
+    facet_wrap(~ HLTH_SERVICE_DLVR_AREA_NAME) +
+    labs(title = "Historical and Projected PM2.5 Levels", x = "", y = "µg/m³")
+
+haLineMo_project2
+
+pm_h_f0 <- pm_combined %>%
+  filter(scenario %in% c("historical", "projection_0", "raqdpsfw"))
+pm_h_f25 <- pm_combined %>%
+  filter(scenario %in% c("historical", "projection_25"))
+pm_h_f50 <- pm_combined %>%
+  filter(scenario %in% c("historical", "projection_50"))
+
+halineMo_C <- function(data, pm25, scenario, title){
+    ggplot(data) +
+    geom_line(aes(x = date, y = pm25, colour = scenario), linewidth = 0.25, alpha = 0.7, position = position_jitter(width = 0.25)) +
+    scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2037-01-01"), by = "5 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+    scale_color_manual(values = c("historical" = "black", "raqdpsfw" = "darkblue","projection_0" = "violetred2", "projection_25" = "violetred3", "projection_50" = "violetred4")) +
+    coord_cartesian(ylim = c(0, 100)) +
+    theme_few(base_size = 8) +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      legend.position = "right",
+      panel.grid.minor = element_blank(),      # Remove minor grid lines
+      panel.grid.major = element_blank(),      # Remove major grid lines
+      axis.ticks = element_line(color = "black"),
+      axis.ticks.length = unit(0.15, "cm")
+    ) +
+    facet_wrap(~ HLTH_SERVICE_DLVR_AREA_NAME) +
+    labs(title = title, x = "", y = "µg/m³")
+}
+
+
+plot_pm25_hf0 <- halineMo_C(pm_h_f0, pm25, scenario, "Historical and projected total PM2.5, assuming 0% increase in wildfire PM2.5 from 2023-2100")
+
+plot_pm25_hf25 <- halineMo_C(pm_h_f25, pm25, scenario, "Historical and projected total PM2.5, assuming 25% increase in wildfire PM2.5 from 2023-2100")
+
+plot_pm25_hf50 <- halineMo_C(pm_h_f50, pm25, scenario, "Historical and projected total PM2.5, assuming 50% increase in wildfire PM2.5 from 2023-2100")
+
+ggsave(filename = "pm25_historical_projection0.png", plot = plot_pm25_hf0, width = 8, height = 6)
+
+ggsave(filename = "pm25_historical_projection25.png", plot = plot_pm25_hf25, width = 8, height = 6)
+
+ggsave(filename = "pm25_historical_projection50.png", plot = plot_pm25_hf50, width = 8, height = 6)
+
+
+pm_h_f0a <- pm_combineda %>%
+  filter(scenario %in% c("historical", "projection_0", "raqdpsfw"))
+pm_h_f25a <- pm_combineda %>%
+  filter(scenario %in% c("historical", "projection_25", "raqdpsfw"))
+pm_h_f50a <- pm_combineda %>%
+  filter(scenario %in% c("historical", "projection_50", "raqdpsfw"))
+
+plot_pm25_hf0a <- halineMo_C(pm_h_f0a, pm25, scenario, "Historical and projected total PM2.5, assuming 0% increase in wildfire PM2.5 from 2023-2100")
+
+plot_pm25_hf25a <- halineMo_C(pm_h_f25a, pm25, scenario, "Historical and projected total PM2.5, assuming 25% increase in wildfire PM2.5 from 2023-2100")
+
+plot_pm25_hf50a <- halineMo_C(pm_h_f50a, pm25, scenario, "Historical and projected total PM2.5, assuming 50% increase in wildfire PM2.5 from 2023-2100")
+
+ggsave(filename = "pm25_historical_5yr_projection0.png", plot = plot_pm25_hf0a, width = 8, height = 6)
+
+ggsave(filename = "pm25_historical_5yr_projection25.png", plot = plot_pm25_hf25a, width = 8, height = 6)
+
+ggsave(filename = "pm25_historical_5yr_projection50.png", plot = plot_pm25_hf50a, width = 8, height = 6)
+```
 
 # Functions for later
 ```{r}
@@ -188,8 +354,6 @@ haLineMo2 <- function (data, title) {
     x = "",
     y = "µg/m³")
 }
-
-
 
 haLineMo_project <- function (data, title, sub) {
     ggplot(data) +
@@ -245,241 +409,20 @@ haLineMo2(wildfire_smoke, "Wildfire contribution to total PM2.5, derived from RA
 write.csv(wildfire_smoke, "average_monthly_wildfire_smoke_HSDA_2018_2023.csv")
 ```
 
-# GEM-MACH to HSDA
+# Writing files
 ```{r}
-cds <- st_read("./data/shape/lcd_000a21a_e.shp")
-bc_hsda <- health_hsda()
+write.csv(pm_combined, "pm25_historical_future_2012_2036_all.csv")
+write.csv(pm_h_f0, "pm25_historical_future_2012_2036_0.csv")
+write.csv(pm_h_f25, "pm25_historical_future_2012_2036_25.csv")
+write.csv(pm_h_f50, "pm25_historical_future_2012_2036_50.csv")
 
-st_crs(cds)
-st_crs(bc_hsda)
+saveRDS(pm_combined,  "pm25_historical_future_2012_2036_all.rds")
+saveRDS(pm_h_f0, "pm25_historical_future_2012_2036_0.rds")
+saveRDS(pm_h_f25, "pm25_historical_future_2012_2036_25.rds")
+saveRDS(pm_h_f50, "pm25_historical_future_2012_2036_50.rds")
 
-# converts cds to HSDA coordinate reference system
-cds_transformed <- st_transform(cds, crs = 3005)
-
-# merges CDUID and HSDA together based on coordinate reference system
-cd_hsda_mapping <- st_join(bc_hsda, cds_transformed, join = st_intersects)
-
-glimpse(cd_hsda_mapping)
-
-projection_hsda <- projection %>%
-  mutate(CDUID = as.character(CDUID)) %>%
-  left_join(cd_hsda_mapping, by = "CDUID") %>%
-  select(HLTH_SERVICE_DLVR_AREA_NAME, month, year, date, background_pm25) %>%
-  filter(!is.na(HLTH_SERVICE_DLVR_AREA_NAME)) %>%
-  mutate(date = ymd(date))
-
-glimpse(projection_hsda)
-
-cd_hsda_mapping_unique <- cd_hsda_mapping %>%
-  distinct(CDUID, .keep_all = TRUE)
-
-projection_hsda <- projection %>%
-  mutate(CDUID = as.character(CDUID)) %>%
-  left_join(cd_hsda_mapping_unique, by = "CDUID") %>%
-  select(HLTH_SERVICE_DLVR_AREA_NAME, month, year, date, background_pm25) %>%
-  filter(!is.na(HLTH_SERVICE_DLVR_AREA_NAME)) %>%
-  mutate(date = ymd(date))
-
-glimpse(projection_hsda)
-
-haLineMo(projection_hsda, "GEM-MACH Monthly")
-
-
+saveRDS(pm_combineda,  "pm25_historical_future_5yr_2012_2036_all.rds")
+saveRDS(pm_h_f0a, "pm25_historical_future_5yr_2012_2036_0.rds")
+saveRDS(pm_h_f25a, "pm25_historical_future_5yr_2012_2036_25.rds")
+saveRDS(pm_h_f50a, "pm25_historical_future_5yr_2012_2036_50.rds")
 ```
-# Projection function
-```{r}
-
-#| column: page
-#| out-width: 100%
-#| 
-#scaling factor per 10 years
-
-project_future_pm25 <- function(scaling_type='linear', 
-                                scaling_factor=1, 
-                                reference_year=2100){
-# calculate based on scaling type
-  if (scaling_type=='linear'){
-    message(paste0(
-      "Assuming a linear annual increase in wildfire activity, ", 
-      reference_year, 
-      " assumed to be ",
-      scaling_factor, " times as bad as 2023"))
- # applies scaling factor to projection data
-    scaling_factor <- (scaling_factor-1)/(reference_year-2023)
-    future_pm25 <- projection %>%
-      filter(year > 2023) %>%
-      mutate(HLTH_SERVICE_DLVR_AREA_NAME = as.character(HLTH_SERVICE_DLVR_AREA_NAME),
-           month = lubridate::month(date)) %>%
-      left_join(average_monthly_wildfire_smoke, 
-              by=c('HLTH_SERVICE_DLVR_AREA_NAME'='HLTH_SERVICE_DLVR_AREA_NAME',
-                   "month")) %>%
-    mutate(
-      factor =(1+(year-2023)*scaling_factor),
-      wildfire_pm25_scaled = factor*wildfire_pm25,
-      total_pm25 = background_pm25 + wildfire_pm25_scaled) 
-      return(future_pm25)
-  }
-
-}
-
-project_future_pm25 <- function(scaling_type='linear', 
-                                scaling_factor=1, 
-                                reference_year=2100){
-
-  if (scaling_type=='linear'){
-    message(paste0(
-      "Assuming a linear annual increase in wildfire activity, ", 
-      reference_year, 
-      " assumed to be ",
-      scaling_factor, " times as bad as 2023"))
-    scaling_factor <- (scaling_factor-1)/(reference_year-2023)
-    future_pm25 <- projection %>%
-    filter(year>2023) %>%
-    mutate(=as.character(CDUID)) %>%
-    left_join(average_monthly_wildfire_smoke, 
-              by=c('CDUID'='CDUID', 'month'='month')) %>%
-    mutate(
-      factor =(1+(year-2023)*scaling_factor),
-      wildfire_pm25_scaled = factor*wildfire_pm25,
-      total_pm25 = background_pm25 + wildfire_pm25_scaled) 
-      return(future_pm25)
-  }
-  
-    if (scaling_type=='exponential'){
-#    scaling_factor <- (scaling_factor-1)/(2036-2023)
-    message(paste0(
-      "Assuming an exponential annual increase in wildfire activity of  ",
-      scaling_factor, " times the previous year"))
-    future_pm25 <- read_csv("monthly_ECCC_projection_2019_2036.csv", show_col_types = FALSE) %>%
-    filter(year>2023) %>%
-    mutate(CDUID=as.character(CDUID)) %>%
-    left_join(average_monthly_wildfire_smoke, 
-              by=c('CDUID'='CDUID', 'month'='month')) %>%
-    mutate(
-      factor =scaling_factor^(year-2023),
-      wildfire_pm25_scaled = factor*wildfire_pm25,
-      total_pm25 = background_pm25 + wildfire_pm25_scaled) 
-      return(future_pm25)
-  }
-  stop("Invalid scaling_type")
-
-}
-
-map_future_project <- function(scaling_factor, 
-                               selected_year,
-                               title, 
-                               reference_year){
-  p <- project_future_pm25(scaling_factor = scaling_factor, 
-                           reference_year=reference_year) %>%
-  filter(year %in% c(selected_year)) %>% 
-  left_join(cds, by="CDUID") %>%
-  st_as_sf() %>%
-    ggplot() + 
-    geom_sf(aes(fill=total_pm25), size=0.01, alpha=0.9) +
-    ggtitle(paste0(title, " wildfire increase till ",  reference_year)) +
-    scale_fill_viridis_c(option="inferno", limits = c(0, 60)) +
-    theme(legend.position="bottom") +
-    facet_wrap(~month) +
-    theme_few()
-
-  print(p)
-}
-
-# map_future_project(1, 2024, "2024 - 0%", reference_year=2036)
-# map_future_project(1, 2030, "2030 - 0%", reference_year=2036)
-# map_future_project(1, 2036, "2036 - 0%", reference_year=2036)
-
-
-```
-
-# Projection prep, using wildfire_smoke (2018-2023)
-```{r}
-# Inputs
-# wildfire_smoke: difference between raqdpsfw (total PM2.5 with wildfire contribution) - raqdps (total PM2.5 WITHOUT wildfire contribution)
-# projection_hsda: predicted baseline PM2.5 (analogous to base raqdps)
-
-glimpse(wildfire_smoke)
-glimpse(projection_hsda)
-
-filter_wildfire_smoke <-wildfire_smoke %>%
-  filter(lubridate::year(date) <= 2023)%>%
-  mutate(month = month(date))
-
-filter_projection_hsda <- projection_hsda %>%
-  filter(lubridate::year(date) >= 2023) %>%
-  mutate(month = month(date))
-
-glimpse(filter_wildfire_smoke)
-glimpse(filter_projection_hsda)
-
-projection_historical_hsda <- filter_projection_hsda %>%
-  left_join(filter_wildfire_smoke %>% select(-date), 
-            by = c("HLTH_SERVICE_DLVR_AREA_NAME" = "HLTH_SERVICE_DLVR_AREA_NAME", 
-                   "month" = "month"))
-
-glimpse(projection_historical_hsda)
-
-projection_1 <- project_future_pm25(projection_historical_hsda)
-
-# 25% scaling factor, 2100 reference year
-scaling_factor_0 <- (1-1)/(2100-2023)
-scaling_factor_25 <- (1.25-1)/(2100-2023)
-scaling_factor_50 <- (1.50-1)/(2100-2023)
-
-future_pm25_0 <- projection_historical_hsda %>%
-      filter(year >= 2023) %>%
-      mutate(HLTH_SERVICE_DLVR_AREA_NAME = as.character(HLTH_SERVICE_DLVR_AREA_NAME),
-           month = lubridate::month(date)) %>%
-    mutate(
-      factor =(1+(year-2023)*scaling_factor_0),
-      wildfire_pm25_scaled = factor*wildfire_pm25,
-      total_pm25 = background_pm25 + wildfire_pm25_scaled) 
-
-future_pm25_25 <- projection_historical_hsda %>%
-      filter(year >= 2023) %>%
-      mutate(HLTH_SERVICE_DLVR_AREA_NAME = as.character(HLTH_SERVICE_DLVR_AREA_NAME),
-           month = lubridate::month(date)) %>%
-    mutate(
-      factor =(1+(year-2023)*scaling_factor_25),
-      wildfire_pm25_scaled = factor*wildfire_pm25,
-      total_pm25 = background_pm25 + wildfire_pm25_scaled) 
-
-future_pm25_50 <- projection_historical_hsda %>%
-      filter(year >= 2023) %>%
-      mutate(HLTH_SERVICE_DLVR_AREA_NAME = as.character(HLTH_SERVICE_DLVR_AREA_NAME),
-           month = lubridate::month(date)) %>%
-    mutate(
-      factor =(1+(year-2023)*scaling_factor_50),
-      wildfire_pm25_scaled = factor*wildfire_pm25,
-      total_pm25 = background_pm25 + wildfire_pm25_scaled) 
-
-
-
-glimpse(future_pm25_0)
-glimpse(future_pm25_25)
-glimpse(future_pm25_50)
-
-
-line_pm25_0 <- haLineMo_project(future_pm25_0, "Projected Total PM2.5, 0% increase from 2023-2100", total_pm25)
-
-line_pm25_25 <- haLineMo_project(future_pm25_25, "Projected Total PM2.5, 25% increase from 2023-2100", total_pm25)
-
-line_pm25_50 <- haLineMo_project(future_pm25_50, "Projected Total PM2.5, 50% increase from 2023-2100", total_pm25)
-
-
-
-ggsave("line_pm25_0.png", plot = line_pm25_0, width = 9, height = 5)
-
-ggsave("line_pm25_25.png", plot = line_pm25_25, width = 9, height = 5)
-ggsave("line_pm25_50.png", plot = line_pm25_50, width = 9, height = 5)
-
-write.csv(future_pm25_0, "future_pm25_0_2023_2036.csv")
-write.csv(future_pm25_25, "future_pm25_25_2023_2036.csv")
-write.csv(future_pm25_50, "future_pm25_50_2023_2036.csv")
-```
-
-```{r}
-
-future_pm25 %>% 
-  select(CDUID, date, total_pm25_same_wildfire) %>%
-  pivot_wider(id_cols = CDUID, names_from = date, values_from = total_pm25_same_wildfire)

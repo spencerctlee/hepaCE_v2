@@ -1,0 +1,227 @@
+---
+title: "Cleaning Incidence, Prevalence, and Mortality Data"
+format: 
+  html: default
+  pdf: default
+editor: visual
+execute:
+  echo: false
+  warning: false
+---
+
+# Loading dependencies
+```{r}
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(scales) 
+library(gghighlight)
+library(gganimate)
+library(ggthemes)
+library(ggplot2)
+library(heemod)
+require(sf)
+```
+
+# Importing raw data
+```{r}
+bc_inc_prev <- read.csv("./data/epi/asthma_incidence_prevalence_bc_hsda_2001_2023.csv")
+bc_mort <- read.csv("./data/epi/mortality_bc_2012_2022.csv")
+```
+
+# Cleaning mortality
+```{r}
+bc_mort <- bc_mort %>% #BC life
+   mutate(ageGroup=str_remove(`Age.group`, " year")) %>%
+   mutate(ageGroup=str_remove(ageGroup, "s")) %>% 
+   mutate(ageGroup=str_remove(ageGroup, " and over")) %>% 
+   mutate(ageGroup=as.numeric(ageGroup)) %>%
+   mutate(year=REF_DATE) %>%
+   select(year, ageGroup, VALUE)
+
+saveRDS(bc_mort, "bc_mort_2012_2022.rds")
+
+glimpse(bc_mort)
+```
+
+# Cleaning incidence prevalence
+```{r}
+glimpse(bc_inc_prev)
+
+bc_inc_prev <- bc_inc_prev %>%
+  filter(DISEASE == "Asthma 1+") %>%
+  filter(SEX == "T") %>%
+  select(-c(SEX,DISEASE)) %>%
+  mutate(Year = as.Date(paste0(Year, "-01-01"), format = "%Y-%m-%d")) %>%
+  filter(HSDA_NAME != "")
+
+glimpse(bc_inc_prev)
+
+saveRDS(bc_inc_prev, "asthma_inc_pre_bc_hsda_2001_2022.rds")
+
+inc_hsda_plot <- ggplot(bc_inc_prev) +
+   geom_line(aes(x = Year, y = INC_CRUDE_RATE, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2000-01-01"), as.Date("2025-01-01"), by = "5 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Incidence Rates by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Incidence rate (per 100k)",
+        color = "Age Group")
+inc_hsda_plot
+
+ggsave(filename = "bc_incidence_asthma_2001_2023.png", plot = inc_hsda_plot, width = 8, height = 6)
+
+
+prev_hsda_plot <- ggplot(bc_inc_prev) +
+   geom_line(aes(x = Year, y = PRE_CRUDE_RATE, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2000-01-01"), as.Date("2025-01-01"), by = "5 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Prevalence Rates by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Prevalence rate (per 100k)",
+        color = "Age Group")
+prev_hsda_plot
+
+ggsave(filename = "bc_prevalence_asthma_2001_2023.png", plot = prev_hsda_plot, width = 8, height = 6)
+```
+
+
+# Reading data
+```{r}
+inc_prev <- readRDS("./data/model_input/asthma_inc_pre_bc_hsda_2001_2022.rds")
+mort <- readRDS("./data/model_input/bc_mort_2012_2022.rds")
+```
+
+# Publication plots
+## 1: Incidence and Prevalence of Asthma in British Columbia (2012-2023)
+```{r}
+## Year limiting incidence and prevalence
+inc_prev <- inc_prev %>%
+  filter(Year >= as.Date("2012-01-01"))
+
+# Incidence plot (2012-2022)
+inc_hsda_plot <- ggplot(inc_prev) +
+   geom_line(aes(x = Year, y = INC_CRUDE_RATE, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2022-01-01"), by = "2 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Incidence Rates by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Incidence rate (per 100k)",
+        color = "Age Group")
+inc_hsda_plot
+
+ggsave(filename = "bc_incidence_asthma_hsda_2012_2022.png", plot = inc_hsda_plot, width = 8, height = 6)
+
+# Prevalence plot (2012-2022)
+pre_hsda_plot <- ggplot(inc_prev) +
+   geom_line(aes(x = Year, y = PRE_CRUDE_RATE, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2022-01-01"), by = "2 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Incidence Rates by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Prevalence rate (per 100k)",
+        color = "Age Group")
+pre_hsda_plot
+
+ggsave(filename = "bc_prevalence_asthma_hsda_2012_2022.png", plot = pre_hsda_plot, width = 8, height = 6)
+```
+
+## 2: Mortaility Plots, placeholder for now
+```{r}
+print("placeholder for now")
+```
+
+## Cleaning Incidence and Prevalence to give yearly probabilities
+```{r}
+
+# Step 1: Binning to 3-year bins
+inc_prev_binned <- inc_prev %>%
+  mutate(year_bin = case_when(
+    Year >= as.Date("2012-01-01") & Year <= as.Date("2014-12-31") ~ "2012-2014",
+    Year >= as.Date("2015-01-01") & Year <= as.Date("2017-12-31") ~ "2015-2017",
+    Year >= as.Date("2018-01-01") & Year <= as.Date("2020-12-31") ~ "2018-2020",
+    Year >= as.Date("2021-01-01") & Year <= as.Date("2022-12-31") ~ "2021-2022",
+  )
+) %>%
+  filter(!is.na(year_bin))
+
+
+# Step 2: Calculate the average incidence rate for each 3-year bin
+inc_prev_avg <- inc_prev_binned %>%
+  group_by(year_bin, REGION, HA_NAME, HSDA_NAME, agegrp) %>%
+  summarise(avg_inc_rate = mean(INC_CRUDE_RATE, na.rm = TRUE), .groups = "drop",
+            avg_pre_rate = mean(PRE_CRUDE_RATE, na.rm = TRUE)
+            )
+  
+
+# Step 3: Convert the averaged incidence rate to annual probability, re-expand bins to yearly
+inc_prev_avg <- inc_prev_avg %>%
+  mutate(annual_inc_p = avg_inc_rate / 100000,
+         annual_pre_p = avg_pre_rate / 100000) %>%
+  mutate(
+    Year = case_when(
+      year_bin == "2012-2014" ~ list(as.Date(c("2012-01-01", "2013-01-01", "2014-01-01"))),
+      year_bin == "2015-2017" ~ list(as.Date(c("2015-01-01", "2016-01-01", "2017-01-01"))),
+      year_bin == "2018-2020" ~ list(as.Date(c("2018-01-01", "2019-01-01", "2020-01-01")))
+    )
+  ) %>%
+  unnest(Year)
+
+# Step 4: SAVING THIS, this is the actual input incidence and probability input for the model!
+saveRDS(inc_prev_avg, "asthma_inc_pre_bc_hsda_prob_3yr_avg_2012_2022.rds")
+
+inc_prob_hsda_plot <- ggplot(inc_prev_avg) +
+   geom_line(aes(x = Year, y = annual_inc_p, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2022-01-01"), by = "2 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Incidence Yearly Probability by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Incidence probability",
+        color = "Age Group")
+inc_prob_hsda_plot
+
+ggsave(filename = "bc_incidence_probability_asthma_hsda_2012_2022.png", plot = inc_prob_hsda_plot, width = 8, height = 6)
+
+
+pre_prob_hsda_plot <- ggplot(inc_prev_avg) +
+   geom_line(aes(x = Year, y = annual_inc_p, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2022-01-01"), by = "2 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Prevalence Yearly Probability by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Prevalence probability",
+        color = "Age Group")
+pre_prob_hsda_plot
+
+ggsave(filename = "bc_prevalence_probability_asthma_hsda_2012_2022.png", plot = pre_prob_hsda_plot, width = 8, height = 6)
+```

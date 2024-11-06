@@ -1,0 +1,125 @@
+---
+title: "Air Cleaner Model version 2"
+format: 
+  html: default
+  pdf: default
+editor: visual
+execute:
+  echo: false
+  warning: false
+---
+
+# Loading dependencies
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(scales) 
+#library(gghighlight)
+#library(gganimate)
+library(ggthemes)
+library(ggplot2)
+library(heemod)
+require(sf)
+```
+
+# Reading data
+
+```{r}
+pm_combined <- readRDS("./data/model_input/pm25_historical_future_5yr_2012_2036_all.rds")
+inc_prev <- readRDS("./data/model_input/asthma_inc_pre_bc_hsda_2001_2022.rds")
+inc_prev_prob <- readRDS("./data/model_input/asthma_inc_pre_bc_hsda_prob_3yr_avg_2012_2022.rds")
+mort <- readRDS("./data/model_input/bc_mort_2012_2022.rds")
+```
+
+# Publication plots
+
+## 1: Incidence and Prevalence of Asthma in British Columbia (2012-2023)
+
+```{r}
+## Year limiting incidence and prevalence
+inc_prev <- inc_prev %>%
+  filter(Year >= as.Date("2012-01-01"))
+
+# Incidence plot (2012-2022)
+inc_hsda_plot <- ggplot(inc_prev) +
+   geom_line(aes(x = Year, y = INC_CRUDE_RATE, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2022-01-01"), by = "2 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Incidence Rates by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Incidence rate (per 100k)",
+        color = "Age Group")
+inc_hsda_plot
+
+ggsave(filename = "bc_incidence_asthma_hsda_2012_2022.png", plot = inc_hsda_plot, width = 8, height = 6)
+
+# Prevalence plot (2012-2022)
+pre_hsda_plot <- ggplot(inc_prev) +
+   geom_line(aes(x = Year, y = PRE_CRUDE_RATE, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2022-01-01"), by = "2 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Incidence Rates by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Prevalence rate (per 100k)",
+        color = "Age Group")
+pre_hsda_plot
+
+ggsave(filename = "bc_prevalence_asthma_hsda_2012_2022.png", plot = pre_hsda_plot, width = 8, height = 6)
+```
+
+## Cleaning Incidence and Prevalence to give yearly probabilities
+
+```{r}
+
+# Plotting incidence probability based on 3-year bins (2012-2022)
+inc_prob_hsda_plot <- ggplot(inc_prev_avg) +
+   geom_line(aes(x = Year, y = annual_inc_p, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2022-01-01"), by = "2 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Incidence Yearly Probability by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Incidence probability",
+        color = "Age Group")
+inc_prob_hsda_plot
+
+ggsave(filename = "bc_incidence_probability_asthma_hsda_2012_2022.png", plot = inc_prob_hsda_plot, width = 8, height = 6)
+
+# Plotting prevalence probability based on 3-year bins (2012-2022)
+pre_prob_hsda_plot <- ggplot(inc_prev_avg) +
+   geom_line(aes(x = Year, y = annual_pre_p, color = agegrp)) +
+   scale_x_date(breaks = seq(as.Date("2012-01-01"), as.Date("2022-01-01"), by = "2 years"),
+                 date_minor_breaks = "1 year",
+                 date_labels = "%Y") +
+   theme_few(base_size = 8) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+         legend.position = "right") +
+   facet_wrap(~HSDA_NAME) +
+   labs(title = "Asthma Prevalence Yearly Probability by Health Service Delivery Area (HSDA)",
+        x = "Year",
+        y = "Prevalence probability",
+        color = "Age Group")
+pre_prob_hsda_plot
+
+ggsave(filename = "bc_prevalence_probability_asthma_hsda_2012_2022.png", plot = pre_prob_hsda_plot, width = 8, height = 6)
+```
+
+## Modeling time
+
+\`\`\`{r}
